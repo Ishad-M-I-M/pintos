@@ -71,6 +71,8 @@ static void locate_block_device(enum block_type, const char *name);
 #endif
 
 int pintos_init(void) NO_RETURN;
+char *readline(void);        // read a line of inputs
+int execute_command(char *); // execute the given command
 
 /* Pintos main entry point. */
 int pintos_init(void)
@@ -136,11 +138,89 @@ int pintos_init(void)
   else
   {
     // TODO: no command line passed to kernel. Run interactively
+    printf("\n***********   start of interactive shell  ******************\n");
+    while (1)
+    {
+      printf("CS2042> ");
+      char *buffer = readline();
+      printf("\n");
+      // commands run in terminal
+      if (execute_command(buffer))
+        break;
+      free(buffer);
+    }
   }
-
+  printf("\n***********   end of interactive shell  ******************\n");
   /* Finish up. */
   shutdown();
   thread_exit();
+}
+
+char *readline()
+{
+  char *buffer = malloc(20 * sizeof(char));
+  uint8_t a;
+  int i = 0;
+  while (1)
+  {
+    a = input_getc();
+
+    if (a == 13)
+      break;
+
+    else if (a == 8)
+    {
+      if (i > 0)
+      {
+        buffer[--i] = 0;
+        printf("\b \b");
+      }
+    }
+
+    else
+    {
+      buffer[i++] = a;
+      printf("%c", a);
+    }
+  }
+
+  buffer[i++] = 0;
+  char *new = realloc(buffer, i * sizeof(char));
+  return new;
+}
+
+int execute_command(char *buffer)
+{
+
+  if (strcmp(buffer, "") == 0)
+    ; // do nothing on blank command
+  else if (strcmp(buffer, "whoami") == 0)
+    printf("190241X - Ishad\n");
+
+  else if (strcmp(buffer, "shutdown") == 0)
+    shutdown_power_off();
+
+  else if (strcmp(buffer, "time") == 0)
+    printf("Number of seconds passed since Unix epoch : %ld\n", rtc_get_time());
+
+  else if (strcmp(buffer, "ram") == 0)
+    printf("Amount of RAM available for the OS : %ld kB\n", init_ram_pages * PGSIZE / 1024);
+
+  else if (strcmp(buffer, "thread") == 0)
+    thread_print_stats();
+
+  else if (strcmp(buffer, "priority") == 0)
+    printf("Priority of current thread : %d\n", thread_get_priority());
+
+  else if (strcmp(buffer, "exit") == 0)
+  {
+    printf("Exit interactive shell... bye!\n");
+    return 1;
+  }
+  else
+    printf("command not found\n");
+
+  return 0;
 }
 
 /* Clear the "BSS", a segment that should be initialized to
