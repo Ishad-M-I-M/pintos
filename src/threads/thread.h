@@ -133,6 +133,9 @@ void thread_awake(int64_t);
 bool cmp_wakeup_tick(const struct list_elem *a,
                      const struct list_elem *b,
                      void *aux);
+bool cmp_thread_priority(const struct list_elem *a,
+                         const struct list_elem *b,
+                         void *aux);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);
