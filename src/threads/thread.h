@@ -90,6 +90,8 @@ struct thread
    int priority;              /* Priority. */
    struct list_elem allelem;  /* List element for all threads list. */
 
+   int64_t tick_wakeup; /* A Local tick to a thread which indicate when to wakeup (set when putting the thread to blocked state) */
+
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */
 
@@ -125,6 +127,12 @@ const char *thread_name(void);
 
 void thread_exit(void) NO_RETURN;
 void thread_yield(void);
+void thread_sleep(int64_t);
+void thread_awake(int64_t);
+
+bool cmp_wakeup_tick(const struct list_elem *a,
+                     const struct list_elem *b,
+                     void *aux);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func(struct thread *t, void *aux);

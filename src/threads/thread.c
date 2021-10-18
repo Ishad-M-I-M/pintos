@@ -24,6 +24,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* List of processes in sleep state*/
+static struct list sleep_list;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -91,6 +94,7 @@ void thread_init(void)
   lock_init(&tid_lock);
   list_init(&ready_list);
   list_init(&all_list);
+  list_init(&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread();
@@ -302,6 +306,56 @@ void thread_yield(void)
   cur->status = THREAD_READY;
   schedule();
   intr_set_level(old_level);
+}
+
+/* compare the wakeup ticks of two threads
+   return true when a's tick_wakeup less than b's tick_wakeup
+*/
+bool cmp_wakeup_tick(const struct list_elem *a,
+                     const struct list_elem *b,
+                     void *aux)
+{
+  struct thread *thread1 = list_entry(a, struct thread, elem);
+  struct thread *thread2 = list_entry(b, struct thread, elem);
+  return thread1->tick_wakeup < thread2->tick_wakeup;
+}
+
+/* block the thread and put the current thread to sleep_list */
+void thread_sleep(int64_t ticks)
+{
+  struct thread *cur = thread_current();
+  cur->tick_wakeup = ticks;
+
+  // put into sleep_list
+  list_insert_ordered(&sleep_list, &cur->elem, cmp_wakeup_tick, NULL);
+  // block the current thread
+  enum intr_level old_level;
+
+  ASSERT(!intr_context());
+
+  old_level = intr_disable();
+  if (cur != idle_thread)
+    thread_block();
+  intr_set_level(old_level);
+}
+
+/* check for threads to wakeup in sleep_list
+  if need to wake up unblock it
+  and append it to ready_list */
+void thread_awake(int64_t current_tick)
+{
+  struct list_elem *e = list_begin(&sleep_list);
+  while (e != list_end(&sleep_list))
+  {
+    struct thread *t = list_entry(e, struct thread, elem);
+
+    if (current_tick < t->tick_wakeup)
+      break;
+
+    list_remove(e);
+    thread_unblock(t);
+    e = list_begin(&sleep_list);
+  }
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
