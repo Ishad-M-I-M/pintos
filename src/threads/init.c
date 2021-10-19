@@ -149,8 +149,8 @@ int pintos_init(void)
         break;
       free(buffer);
     }
+    printf("\n***********   end of interactive shell  ******************\n");
   }
-  printf("\n***********   end of interactive shell  ******************\n");
   /* Finish up. */
   shutdown();
   thread_exit();
