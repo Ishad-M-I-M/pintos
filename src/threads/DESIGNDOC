@@ -40,7 +40,7 @@ https://oslab.kaist.ac.kr/pintosslides/
 >> including the effects of the timer interrupt handler.
 
 timer_sleep method call thread_sleep method to put the current thread to sleep for
-specific amount of time. Then, the thread is set to THREAD_BLOCKED state instead of
+specific amount of ticks. Then, the thread is set to THREAD_BLOCKED state instead of
 yeilding the CPU (how it is previously implemented). So, this prevent busy waiting.
 
 timer_interrupt is a function which is responsible of incrementing the tick counter.
@@ -51,27 +51,35 @@ are expired.
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
 
-thread_awake is only function which is implemented to be called inside timer_interrupt. 
-For minimize the time spent in timer interrupt handler maintain the sleep_list as ordered list (ascending order of tick_wakeup).
-If a thread found with tick_wakeup greater than current immediately break the loop
-instead of checking for all threads.
+thread_awake is only function which is implemented by me to be called inside timer_interrupt. 
+For minimize the time spent in timer interrupt handler, I maintained the sleep_list as ordered list 
+(ascending order of tick_wakeup).
+If a thread found with tick_wakeup greater than current tick (i.e. wakeup_tick not expired) immediately 
+break the loop instead of checking for all threads.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
 
-ASSERT(intr_get_level() == INTR_ON)
-condition checks for interrupt level before calling the critical thread_sleep method.
-So, it avoid
+In critical sections OS should run in INTR_OFF condition.(i.e. interrupts are disabled).
+But, timer_sleep() can be called only in INTR_ON condition. So, race conditions are
+avoided.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
+
+Interrupts are disabled in the critical section of timer_sleep() 
+(i.e. critical condition is in thread_sleep() method called by timer_sleep()). 
+So, occuring interrupts are avoided in a critical section.
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
+
+Maintain a minimum overhead in thread_awake() ( by keeping the sleep_list in ascending order) 
+with less complexity.
 
 			 PRIORITY SCHEDULING
 			 ===================

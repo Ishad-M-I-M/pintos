@@ -92,6 +92,11 @@ struct thread
 
    int64_t tick_wakeup; /* A Local tick to a thread which indicate when to wakeup (set when putting the thread to blocked state) */
 
+   int original_priority;     /* To store original priority of the thread */
+   struct list donations;     /*to store the priority donated threads */
+   struct list_elem d_elem;   /* donated list element */
+   struct lock *waiting_lock; /*lock which is waiting for */
+
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */
 
