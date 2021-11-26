@@ -20,6 +20,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
+void argument_stack(int argc, char *argv[], void **stackpointer);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -37,8 +38,12 @@ tid_t process_execute(const char *file_name)
     return TID_ERROR;
   strlcpy(fn_copy, file_name, PGSIZE);
 
+  /* Get the program name from the command line passed */
+  char *file, *save_ptr;
+  file = strtok_r(file_name, " ", &save_ptr);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(file, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
@@ -53,17 +58,39 @@ start_process(void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  /* Get the program name from the command line passed */
+  char *file, *save_ptr;
+  file = strtok_r(file_name, " ", &save_ptr);
+
+  /* parse arguments */
+  int8_t argc = 0;
+  char **argv = (char **)palloc_get_page(0);
+  argv[argc++] = file;
+  char *token;
+  for (token = strtok_r(NULL, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+  {
+    argv[argc++] = token;
+  }
+
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load(file_name, &if_.eip, &if_.esp);
+  success = load(file, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page(file_name);
   if (!success)
+  {
+    palloc_free_page(file_name);
     thread_exit();
+  }
+
+  /* Setting up the argument stack */
+  argument_stack(argc, argv, &if_.esp);
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  palloc_free_page(argv);
+  palloc_free_page(file_name);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -76,6 +103,52 @@ start_process(void *file_name_)
                : "g"(&if_)
                : "memory");
   NOT_REACHED();
+}
+
+/* function to setup the argument stack for user process
+  argc - argument count
+  argv - array of strings containig arguments
+  esp - pointer to the stack of the user process */
+void argument_stack(int argc, char *argv[], void **esp)
+{
+  /* argc cannot be < 0 */
+  ASSERT(argc >= 0);
+
+  /* placing the argv to the process stack.
+    Start with bottom of the stack
+    So, should place argv's in reverse order */
+  int i;
+  int len = 0;
+  void *argv_addr[argc]; // keep track of addresses of arguments placed in stack
+  for (i = argc - 1; i >= 0; i--)
+  {
+    len = strlen(argv[i]) + 1; // length of the string with the null char
+    *esp -= len;
+    memcpy(*esp, argv[i], len);
+    argv_addr[i] = *esp;
+  }
+
+  // leaving sentinel / word align to seperate argv's from addresses
+  *esp -= 5;
+
+  // stacking argv_addresses
+  for (i = argc - 1; i >= 0; i--)
+  {
+    *esp -= 4;
+    *((void **)*esp) = argv_addr[i];
+  }
+
+  // argv_addr
+  *esp -= 4;
+  *((void **)*esp) = (*esp + 4);
+
+  // stacking argc
+  *esp -= 4;
+  *((int *)*esp) = argc;
+
+  // fake return address
+  *esp -= 4;
+  *((int *)*esp) = 0;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
