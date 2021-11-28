@@ -129,7 +129,11 @@ void argument_stack(int argc, char *argv[], void **esp)
   }
 
   // leaving sentinel / word align to seperate argv's from addresses
-  *esp -= 5;
+  *esp = (void *)((int)*esp & 0xfffffffc);
+
+  // null address at the end of the addresses
+  *esp -= 4;
+  *((int *)*esp) = 0;
 
   // stacking argv_addresses
   for (i = argc - 1; i >= 0; i--)
