@@ -88,7 +88,7 @@ start_process(void *file_name_)
 
   /* Setting up the argument stack */
   argument_stack(argc, argv, &if_.esp);
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+  // hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true); //Debug
   palloc_free_page(argv);
   palloc_free_page(file_name);
 
