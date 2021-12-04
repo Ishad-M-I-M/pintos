@@ -165,7 +165,10 @@ void argument_stack(int argc, char *argv[], void **esp)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int process_wait(tid_t child_tid UNUSED)
-{
+{ 
+  //TODO: need a proper implementation
+  for (size_t i =0; i< 300000000; i++);
+ 
   return -1;
 }
 
