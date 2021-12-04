@@ -15,6 +15,6 @@ case $cmd in
     2)  #arg testcases
         make clean
         make
-        
+        make /build/tests/userprog/args-none.result
         ;;
 esac
