@@ -5,6 +5,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "process.h"
+#include "filesys/filesys.h"
+
+/* lock for synchronization in file system operation */
+struct lock filesys_lock;
 
 static void syscall_handler(struct intr_frame *);
 static int get_user(const uint8_t *uaddr);
@@ -31,6 +35,7 @@ int sys_write(int fd, const void *buffer, unsigned size);
 
 void syscall_init(void)
 {
+  lock_init(&filesys_lock);
   intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -75,6 +80,18 @@ syscall_handler(struct intr_frame *f UNUSED)
     arg_from_stack(f->esp + 4, &pid, sizeof(pid_t));
 
     f->eax = (uint32_t)sys_wait(pid);
+    break;
+
+  }
+  case SYS_CREATE:
+  {
+    const char *file;
+    unsigned initial_size;
+
+    arg_from_stack(f->esp + 4, &file, sizeof(file));
+    arg_from_stack(f->esp + 8, &initial_size, sizeof(initial_size));
+
+    f->eax = sys_create(file, initial_size);
     break;
   }
 
@@ -163,6 +180,21 @@ pid_t sys_exec(const char *cmd_line)
 int sys_wait(pid_t pid)
 {
   return process_wait(pid);
+}
+
+bool sys_create(const char *file, unsigned initial_size)
+{
+  bool return_code;
+
+  // memory validation
+  if(get_user((const uint8_t *)file) == -1){
+    sys_exit(-1);
+  }
+
+  lock_acquire(&filesys_lock);
+  return_code = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
+  return return_code;
 }
 
 int sys_write(int fd, const void *buffer, unsigned size)
