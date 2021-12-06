@@ -7,6 +7,7 @@
 #include "process.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "threads/vaddr.h"
 
 /* lock for synchronization in file system operation */
 struct lock filesys_lock;
@@ -242,12 +243,17 @@ void sys_exit(int status)
 pid_t sys_exec(const char *cmd_line)
 {
   // check does the cmd_line in valid user space. If not exit the process
-  if(get_user(cmd_line) == -1)
+  char *i = cmd_line;
+  do{
+    if(get_user(i) == -1)
     sys_exit(-1);
 
-  
-  // TODO: implement synchronization
+  }while(*i++);
+
+  // load() on process execute access file system. 
+  lock_acquire(&filesys_lock);
   pid_t pid = process_execute(cmd_line);
+  lock_release(&filesys_lock);
 
   return pid;
 }
@@ -345,7 +351,9 @@ void sys_close(int fd)
 int sys_read(int fd, void *buffer, unsigned size)
 {
   // memory validation
-  if(get_user((const uint8_t *)buffer) == -1 || get_user((const uint8_t *)buffer +size -1) == -1){
+  if( (unsigned)buffer +size -1 >= PHYS_BASE ||
+    get_user((const uint8_t *)buffer) == -1 || 
+    get_user((const uint8_t *)buffer +size -1) == -1){
     sys_exit(-1);
   }
 

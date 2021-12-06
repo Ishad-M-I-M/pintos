@@ -43,8 +43,11 @@ tid_t process_execute(const char *file_name)
   strlcpy(fn_copy, file_name, PGSIZE);
 
   /* Get the program name from the command line passed */
-  char *file, *save_ptr;
-  file = strtok_r(file_name, " ", &save_ptr);
+  int len = strlen(file_name)+1;
+  char file[len];
+  strlcpy(file, file_name, len );
+  char *save_ptr;
+  strtok_r(file, " ", &save_ptr);
 
   /* Initialize the pcb */
   pcb = palloc_get_page(0);

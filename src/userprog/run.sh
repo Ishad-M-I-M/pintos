@@ -29,4 +29,9 @@ case $cmd in
         make build/tests/userprog/args-many.result
         make build/tests/userprog/args-dbl-space.result
         ;;
+    3) #to debug read-bad-ptr
+        make clean
+        make
+        pintos -v -k -T 60 --qemu  --filesys-size=2 -p build/tests/userprog/read-bad-ptr -a read-bad-ptr -p ../tests/userprog/sample.txt -a sample.txt --gdb -- -q  -f run read-bad-ptr 
+        ;;
 esac
