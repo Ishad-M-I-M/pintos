@@ -219,6 +219,9 @@ void sys_halt(void)
 
 void sys_exit(int status)
 {
+  if(status < 0){
+    status = -1;
+  }
   printf("%s: exit(%d)\n", thread_current()->name, status); // exit statement
   
   // Store the process exit info in pcb
