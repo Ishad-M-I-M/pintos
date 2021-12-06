@@ -28,4 +28,12 @@ struct pcb
     struct semaphore sema_wait;           /* to block the process till the child exit */
 };
 
+/* file descriptor */
+struct file_desc
+{
+    int id;                     /* decriptor id */ 
+    struct list_elem elem;      /* list element */
+    struct file *file;          /* file */
+};
+
 #endif /* userprog/process.h */

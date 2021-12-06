@@ -100,6 +100,8 @@ struct thread
    // Added in Project 2
    struct list child_list;     /* List to maintain child threads*/
    struct pcb *pcb;                 /* store process data */
+
+   struct list file_descs;     /* file descriptors */
 #endif
 
    /* Owned by thread.c. */
