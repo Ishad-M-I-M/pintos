@@ -115,6 +115,19 @@ syscall_handler(struct intr_frame *f UNUSED)
     break;
 
   }
+
+  case SYS_READ:
+  {
+    int fd;
+    void *buffer;
+    unsigned size;
+    arg_from_stack(f->esp + 4, &fd, sizeof(fd));
+    arg_from_stack(f->esp + 8, &buffer, sizeof(buffer));
+    arg_from_stack(f->esp + 12, &size, sizeof(size));
+
+    f->eax = (uint32_t)sys_read(fd, buffer, size);
+    break;
+  }
   case SYS_WRITE:
   {
     int fd;
@@ -295,24 +308,81 @@ void sys_close(int fd)
   lock_release(&filesys_lock);
 }
 
-int sys_write(int fd, const void *buffer, unsigned size)
+int sys_read(int fd, void *buffer, unsigned size)
 {
+  // memory validation
+  if(get_user((const uint8_t *)buffer) == -1 || get_user((const uint8_t *)buffer +size -1) == -1){
+    sys_exit(-1);
+  }
+
+  lock_acquire(&filesys_lock);
   int return_code;
 
+  if (fd == 0)
+  { 
+    /* read from stdin */
+    unsigned i;
+    for (i = 0; i < size; ++i)
+    {
+      if (!put_user(buffer + i, input_getc()))
+      {
+        lock_release(&filesys_lock);
+        sys_exit(-1);
+      }
+    }
+    return_code = size;
+  }
+  else
+  {
+    /* read from file */
+    struct file_desc *file_desc = get_file_desc(thread_current(), fd);
+
+    if (file_desc && file_desc->file)
+    {
+      return_code = file_read(file_desc->file, buffer, size);
+    }
+    else //file not fount
+      return_code = -1;
+  }
+
+  lock_release(&filesys_lock);
+  return return_code;
+}
+
+int sys_write(int fd, const void *buffer, unsigned size)
+{
+  // memory validation
+  if(get_user((const uint8_t *)buffer) == -1){
+    sys_exit(-1);
+  }
+
+  int return_code;
+  lock_acquire(&filesys_lock);
+
   if (fd == 1)
-  { // write to stdout
+  { 
+    /* write to stdout */
     putbuf(buffer, size);
     return_code = size;
   }
   else
   {
-    //TODO: implement writing to files
+    /* write to a file */
+    struct file_desc *file_desc = get_file_desc(thread_current(), fd);
+
+    if (file_desc && file_desc->file)
+    {
+      return_code = file_write(file_desc->file, buffer, size);
+    }
+    else // File not found
+      return_code = -1;
   }
+  lock_release(&filesys_lock);
   return return_code;
 
 }
 
-/* helper function to find file descriptor in the threads 
+/* helper function to find file descriptor in the thread's 
  file descriptor list*/
 static struct file_desc *
 get_file_desc(struct thread *t, int fd)
