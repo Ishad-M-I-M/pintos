@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "process.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 
 /* lock for synchronization in file system operation */
 struct lock filesys_lock;
@@ -115,7 +116,15 @@ syscall_handler(struct intr_frame *f UNUSED)
     break;
 
   }
+  case SYS_FILESIZE:
+  {
+    int fd;
+    arg_from_stack(f->esp + 4, &fd, sizeof(fd));
 
+    f->eax = sys_filesize(fd);
+    break;
+
+  }
   case SYS_READ:
   {
     int fd;
@@ -127,6 +136,7 @@ syscall_handler(struct intr_frame *f UNUSED)
 
     f->eax = (uint32_t)sys_read(fd, buffer, size);
     break;
+
   }
   case SYS_WRITE:
   {
@@ -142,6 +152,27 @@ syscall_handler(struct intr_frame *f UNUSED)
     break;
 
   }
+  case SYS_SEEK:
+  {
+    int fd;
+    unsigned position;
+
+    arg_from_stack(f->esp + 4, &fd, sizeof(fd));
+    arg_from_stack(f->esp + 8, &position, sizeof(position));
+
+    sys_seek(fd, position);
+    break;
+
+  }
+  case SYS_TELL:
+  {
+    int fd;
+    arg_from_stack(f->esp + 4, &fd, sizeof(fd));
+
+    f->eax = (uint32_t)sys_tell(fd);
+    break;
+
+  }
   case SYS_CLOSE:
   {
     int fd;
@@ -149,8 +180,8 @@ syscall_handler(struct intr_frame *f UNUSED)
 
     sys_close(fd);
     break;
-  }
-  
+
+  }  
   default:
     printf("system call not defined!\n");
     sys_exit(-1);
@@ -380,6 +411,58 @@ int sys_write(int fd, const void *buffer, unsigned size)
   lock_release(&filesys_lock);
   return return_code;
 
+}
+
+int sys_filesize(int fd)
+{
+  struct file_desc *file_desc;
+
+  lock_acquire(&filesys_lock);
+  file_desc = get_file_desc(thread_current(), fd);
+
+  if (file_desc == NULL)
+  {
+    lock_release(&filesys_lock);
+    return -1;
+  }
+
+  int return_code = file_length(file_desc->file);
+  lock_release(&filesys_lock);
+  return return_code;
+}
+
+void sys_seek(int fd, unsigned position)
+{
+  lock_acquire(&filesys_lock);
+  struct file_desc *file_desc = get_file_desc(thread_current(), fd);
+
+  if (file_desc && file_desc->file)
+  {
+    file_seek(file_desc->file, position);
+  }
+  else
+  {
+    // TODO: what to do here?
+  }
+
+  lock_release(&filesys_lock);
+}
+
+unsigned sys_tell(int fd)
+{
+  lock_acquire(&filesys_lock);
+  struct file_desc *file_desc = get_file_desc(thread_current(), fd);
+
+  unsigned return_code;
+  if (file_desc && file_desc->file)
+  {
+    return_code = file_tell(file_desc->file);
+  }
+  else
+    return_code = -1; // TODO need sys_exit?
+
+  lock_release(&filesys_lock);
+  return return_code;
 }
 
 /* helper function to find file descriptor in the thread's 
