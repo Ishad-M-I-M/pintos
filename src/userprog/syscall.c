@@ -4,6 +4,7 @@
 #include <user/syscall.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "process.h"
 
 static void syscall_handler(struct intr_frame *);
 static int get_user(const uint8_t *uaddr);
@@ -38,7 +39,7 @@ syscall_handler(struct intr_frame *f UNUSED)
 {
   int syscall_num;
   arg_from_stack(f->esp, &syscall_num, sizeof(syscall_num));
-  // printf("%d\n", syscall_num);
+  // printf("%d\n", syscall_num);  //debug
 
   switch (syscall_num)
   {
@@ -58,6 +59,23 @@ syscall_handler(struct intr_frame *f UNUSED)
     NOT_REACHED();
     break;
 
+  }
+  case SYS_EXEC:
+  {
+    void *cmd_line;
+    arg_from_stack(f->esp + 4, &cmd_line, sizeof(cmd_line));
+
+    f->eax = (uint32_t)sys_exec((const char *)cmd_line);
+    break;
+
+  }
+  case SYS_WAIT:
+  {
+    pid_t pid;
+    arg_from_stack(f->esp + 4, &pid, sizeof(pid_t));
+
+    f->eax = (uint32_t)sys_wait(pid);
+    break;
   }
 
   case SYS_WRITE:
@@ -96,7 +114,6 @@ static void arg_from_stack(uint8_t *uaddr, uint8_t *arg, size_t arg_size)
     if (byte == -1)
     {
       // TODO: implement to avoid memory leaks (released aquire locks or memory allocations).
-      printf("Failed to Acess Memory");
       sys_exit(-1);
     }
 
@@ -104,8 +121,7 @@ static void arg_from_stack(uint8_t *uaddr, uint8_t *arg, size_t arg_size)
   }
 }
 
-
-/* syscall functions */
+/* ======================  syscall functions =================================  */
 
 void sys_halt(void)
 {
@@ -115,10 +131,39 @@ void sys_halt(void)
 void sys_exit(int status)
 {
   printf("%s: exit(%d)\n", thread_current()->name, status); // exit statement
-  //TODO: implement informing waiting parent process
+  
+  // Store the process exit info in pcb
+  struct pcb *pcb = thread_current()->pcb;
+  if (pcb != NULL)
+  {
+    pcb->exited = true;
+    pcb->exit_code = status;
+  }
+  else
+  {
+    //TODO: handle the situation.
+  }
+
   thread_exit();
 }
 
+pid_t sys_exec(const char *cmd_line)
+{
+  // check does the cmd_line in valid user space. If not exit the process
+  if(get_user(cmd_line) == -1)
+    sys_exit(-1);
+
+  
+  // TODO: implement synchronization
+  pid_t pid = process_execute(cmd_line);
+
+  return pid;
+}
+
+int sys_wait(pid_t pid)
+{
+  return process_wait(pid);
+}
 
 int sys_write(int fd, const void *buffer, unsigned size)
 {

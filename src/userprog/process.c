@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -31,6 +32,9 @@ tid_t process_execute(const char *file_name)
   char *fn_copy;
   tid_t tid;
 
+  /* process control block for the child process */
+  struct pcb *pcb = NULL;   
+
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page(0);
@@ -42,19 +46,37 @@ tid_t process_execute(const char *file_name)
   char *file, *save_ptr;
   file = strtok_r(file_name, " ", &save_ptr);
 
+  /* Initialize the pcb */
+  pcb = palloc_get_page(0);
+  pcb->parent= thread_current();
+  pcb->waiting = false;
+  pcb->exited = false;
+  pcb->exit_code = NULL;
+  pcb->cmd_line = fn_copy;
+
+  sema_init(&pcb->sema_wait, 0);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  tid = thread_create(file, PRI_DEFAULT, start_process, pcb);
+  if (tid == TID_ERROR){
     palloc_free_page(fn_copy);
+    palloc_free_page(pcb);
+  }
+  else{
+    list_push_back(&(thread_current()->child_list), &(pcb->elem));
+  }
+  pcb->pid = tid;
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process(void *file_name_)
+start_process(void *pcb_)
 {
-  char *file_name = file_name_;
+  struct pcb *pcb = pcb_;
+
+  char *file_name = (char *)pcb->cmd_line;
   struct intr_frame if_;
   bool success;
 
@@ -79,11 +101,16 @@ start_process(void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file, &if_.eip, &if_.esp);
 
+  /* Assign PCB to thread */
+  struct thread *t = thread_current();
+  pcb->pid = success ? (pid_t)(t->tid) : PID_ERROR;
+  t->pcb = pcb;
+
   /* If load failed, quit. */
   if (!success)
   {
     palloc_free_page(file_name);
-    thread_exit();
+    sys_exit(-1);
   }
 
   /* Setting up the argument stack */
@@ -166,10 +193,64 @@ void argument_stack(int argc, char *argv[], void **esp)
    does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 { 
-  //TODO: need a proper implementation
-  for (size_t i =0; i< 300000000; i++);
- 
-  return -1;
+  struct thread *t = thread_current();
+  struct list *child_list = &(t->child_list);
+
+  // search for a child process with `child_tid`
+  struct list_elem *child_elem = NULL;
+  struct pcb *child_pcb = NULL;
+
+  if (!list_empty(child_list))
+  {
+    for (child_elem = list_front(child_list); child_elem != list_end(child_list); child_elem = list_next(child_elem))
+    {
+      struct pcb *pcb = list_entry(
+          child_elem, struct pcb, elem);
+
+      if (pcb->pid == child_tid)
+      { 
+        // Found the child
+        child_pcb = pcb;
+        break;
+      }
+    }
+  }
+
+  // No process child_tid
+  if (child_pcb == NULL)
+  {
+    return -1;
+  }
+
+  // Process is already waiting
+  if (child_pcb->waiting)
+  {
+    return -1; 
+  }
+  else
+  {
+    child_pcb->waiting = true;
+  }
+
+  
+  if (!child_pcb->exited)
+  {
+    // child is not already exited. block the process till child process exit
+    // sema_up in process_exit()
+    sema_down(&(child_pcb->sema_wait));
+  }
+  ASSERT(child_pcb->exited == true);
+
+  // remove from child_list
+  ASSERT(child_elem != NULL);
+  list_remove(child_elem);
+
+  int exit_code = child_pcb->exit_code;
+
+  // free up the child_pcb
+  palloc_free_page(child_pcb);
+
+  return exit_code;
 }
 
 /* Free the current process's resources. */
@@ -177,6 +258,28 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
+
+  // free up all child_pcb s
+  struct list *child_list = &cur->child_list;
+  while (!list_empty(child_list))
+  {
+    struct list_elem *e = list_pop_front(child_list);
+    struct pcb *pcb;
+    pcb = list_entry(e, struct pcb, elem);
+    if (pcb->exited)
+    {
+      palloc_free_page(pcb);
+    }
+    else
+    {
+      // process is still running. let it to run till exit.
+      // TODO: Is there some thing to do here?.
+      pcb->parent = NULL;
+    }
+  }
+
+  cur->pcb->exited = true;
+  sema_up(&cur->pcb->sema_wait);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
