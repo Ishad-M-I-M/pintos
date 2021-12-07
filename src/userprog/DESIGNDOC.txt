@@ -25,19 +25,55 @@ Refered to the material in :
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Didn't declare or modify struct / global or static variable.
+
+
+The only variables declared in `process.c / start_process()` for help argument stacking are:
+	char **argv = (char **)palloc_get_page(0);  - array to hold tokanized strings
+	int8_t argc 								- to keep argument count
+	char *file									- first tokanized part. It refers to the file that need to be loaded 
+	char *save_ptr								- pointer to store next part to be tokanized.
+	char *token 								- temporarily hold the tokanized parts and assign them argv array.
+
+
+a page is allocated in kerenel space to store tokanized strings. 
+According to labsheet we have freedom to assume size of a command line don't exceed pagesize.
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+we use strtok_r() to tokanize the command passed with " " delimiter.
+It is implemented sucessfully tokanize even there are double spaces between
+arguments. 
+
+stacking done as follows:
+* argv in reverse order. ( last argv stacked first )
+* world align
+* left a null address to seperate argv's and argv addresses
+* argv addresses in reverse order.
+* argc - number of arguments
+* fake return address (0)
+
+If the stack page overflowed it is going to wirte in data blocks.
+So, a segfault occur and system exit with a -1 status.
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
+strtok() is not a re-entrant.
+But strtok_r() is re-entrant version of strtok. (i.e. maintain a pointer to next part to be tokanized).
+And also strtok() is not thread safe and strtok_r() is thread safe.
+
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
+
+* faster as it take the advantage of MMU
+* It tends to be used in the real kernel.
 
 			     SYSTEM CALLS
 			     ============
@@ -48,14 +84,76 @@ Refered to the material in :
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+>>>>>>>>>>>>>>>>> in process.h
+
+/*process control block for store process information*/
+struct pcb
+{
+
+    pid_t pid; /* process id*/
+    const char * cmd_line; /*command line executed*/
+
+    struct list_elem elem;        /* list element */
+    struct thread *parent; /* the parent process. */
+
+    bool waiting;     /* does parent process waiting. useful for check does the wait on process called twice*/
+    bool exited;      /* process completed and exited */
+    int32_t exit_code; /* exit code of the process */
+
+    /* For synchronization */
+    struct semaphore sema_wait;           /* to block the process till the child exit */
+};
+
+/* file descriptor to store file information */
+struct file_desc
+{
+    int id;                     /* decriptor id */ 
+    struct list_elem elem;      /* list element */
+    struct file *file;          /* file */
+};
+
+>>>>>>>>>>>>>>>>>> in thread.h
+
+introduced following properties in thread struct
+
+   	struct list child_list;     - list of child threads
+   	struct pcb *pcb;            - pointer to process control block where the thread information is stored
+   	struct list file_descs;     - list of file descriptors belonging to this process
+
+>>>>>>>>>>>>>>>>>> in syscall.c 
+
+static struct lock filesys_lock; 	- global lock to ensure file system synchronization.
+
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+system maintain some unique file descriptors. (stdin =0 , stdout = 1, stderr = 2)
+other file descriptors are unique within a single process. 
+
+when a file is open, create file descriptor for it to store information of of that.
 
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+in read syscall, 
+when fd = 0 read from the stdin.
+else we search for file descriptors with that file descriptor id within the process,
+then aquire file system lock then call the file_read() which is given implemented
+in filesys.
+After reading release the file system lock.
+
+in write syscall, 
+when fd = 1 write to the stdout.
+else we search for file descriptors with that file descriptor id within the process,
+then aquire file system lock then call the file_write() which is given implemented
+in filesys.
+After writing release the file system lock.
+
+Need validations to make sure read not go beyond process memory space.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -64,8 +162,35 @@ Refered to the material in :
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+
+*least number of inspection = 1.
+If the first inspection( pagedir_get_page ) returns pointer for the page head.
+We no need more inspections.
+
+*greatest number possible = if not contiguous = 4096
+							if contiguous     = 2
+
+If not contiguous we need to check every address.
+In case of contiguous memory, for virtual address we only need to check
+start of the page and the end of the page. 
+
+For 2 bytes of data:
+*least number of inspections = 1
+*greatest number = 2
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+wait system call is intended to block the parent thread till child thread exit with given id.
+blocking is done by using semaphore which is initialize with value 0.
+In process termination (process_exit()) is will up the semaphore allowing to parent thread countinue with its execution.
+
+waiting fails and return -1 when,
+* no child process with given tid.
+* calling wait twice on same tid.
+
+Wait returns exit status of child process to parent.(If already terminated simply return the exit status.
+If not wait till termination and get the exit status. )
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -81,12 +206,25 @@ Refered to the material in :
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+For memory validation I used the get_user() function provided in lab sheet.
+that function try to acess the given user address and if sucess return the byte read else return -1.
+In addition to that we need to check the pointing address is below the PHYS_BASE.
+
+If the validation fails I deallocated all the palloc memory allocations to avoid memory leaks.
+Actually I have done the memory validation parts within the main function of syscalls as It need a single if condition.
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+in process execute before returning the tid, block the function with a semaphore (sema_start in pcb), and allow
+to initialize the pcb in start_process.
+only after initializing wake up that semaphore and allow process_execute to proceed.
+If the child process failed to load the executable of it exit with status of -1.(stores it in exit_status of child process)
+
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -95,16 +233,42 @@ Refered to the material in :
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+* P calls wait(C) before C exit.
+The P downs the sema_wait semaphore and get blocked. When child process(C) is exiting
+it up that semaphore and let P to execute.
+
+* P calls wait(C) after C exit.
+No need synchronization. get the exit status and return it.
+
+free up the all allocated memory spaces with palloc. (I only used palloc.)
+ex: free up all the pcbs when parent process terminated.
+	free up the argv used to stack after argument stacking.
+
+P terminating after C exit is not a special case.
+But, P terminating before C exit is a special case. The child_processes become orphans/zombies.
+But still allowed C to execute
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+It is the efficient way of doing as it make use of MMU(Memeory mapping unit).
+And also more support is provided in labsheet for that approach.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+advantage:
+* simple, straight forward to implement.
+
+disadvantages:
+* os may contain many file decriptors for same file. So, wasting memory.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+Didn't change it much. Just mapped the tid to pid of the pcb.
 
 			   SURVEY QUESTIONS
 			   ================

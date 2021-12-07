@@ -58,6 +58,7 @@ tid_t process_execute(const char *file_name)
   pcb->cmd_line = fn_copy;
 
   sema_init(&pcb->sema_wait, 0);
+  sema_init(&pcb->sema_start, 0);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file, PRI_DEFAULT, start_process, pcb);
@@ -68,6 +69,8 @@ tid_t process_execute(const char *file_name)
   else{
     list_push_back(&(thread_current()->child_list), &(pcb->elem));
   }
+
+  sema_down(&pcb->sema_start);  /* wait till initialization inside start process complete */
   pcb->pid = tid;
   return tid;
 }
@@ -109,9 +112,12 @@ start_process(void *pcb_)
   pcb->pid = success ? (pid_t)(t->tid) : PID_ERROR;
   t->pcb = pcb;
 
+  sema_up(&pcb->sema_start);  /* awake process_execute() */
+
   /* If load failed, quit. */
   if (!success)
   {
+    palloc_free_page(argv);
     palloc_free_page(file_name);
     sys_exit(-1);
   }
