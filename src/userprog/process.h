@@ -26,6 +26,7 @@ struct pcb
 
     /* For synchronization */
     struct semaphore sema_wait;           /* to block the process till the child exit */
+    struct semaphore sema_start;           /* synchronization between process_execute and process_start() */ 
 };
 
 /* file descriptor */

@@ -10,7 +10,7 @@
 #include "threads/vaddr.h"
 
 /* lock for synchronization in file system operation */
-struct lock filesys_lock;
+static struct lock filesys_lock;
 
 static void syscall_handler(struct intr_frame *);
 static int get_user(const uint8_t *uaddr);
@@ -383,7 +383,7 @@ int sys_read(int fd, void *buffer, unsigned size)
     {
       return_code = file_read(file_desc->file, buffer, size);
     }
-    else //file not fount
+    else //file not found
       return_code = -1;
   }
 
