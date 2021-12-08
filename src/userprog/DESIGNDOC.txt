@@ -282,6 +282,10 @@ the quarter.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
+It's been hard to implement in average. Refered to number of resources. Cited slides been
+very useful in implementation. It rook too long to me to get the idea what to implement and how Pintos
+functions.
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
 
@@ -291,5 +295,7 @@ the quarter.
 
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?
+
+An introductory session will be great before jump into implementation.
 
 >> Any other comments?
